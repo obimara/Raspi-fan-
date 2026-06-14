@@ -47,20 +47,20 @@ export default function DesktopWindow({
         {/* Glass Windows Controls */}
         <div className="flex items-center gap-2 self-start pt-1.5">
           <button 
+            onClick={onClose}
             className="w-3 h-3 rounded-full bg-red-400/55 hover:bg-rose-500 transition-colors cursor-pointer"
+            id={`win-close-${title.replace(/\s+/g, '-').toLowerCase()}`}
+            title="Close"
+          />
+          <button 
+            className="w-3 h-3 rounded-full bg-amber-400/55 hover:bg-yellow-500 transition-colors cursor-pointer"
             id={`win-minimize-${title.replace(/\s+/g, '-').toLowerCase()}`}
             title="Minimize"
           />
           <button 
-            className="w-3 h-3 rounded-full bg-amber-400/55 hover:bg-yellow-500 transition-colors cursor-pointer"
+            className="w-3 h-3 rounded-full bg-emerald-400/55 hover:bg-emerald-500 transition-colors cursor-pointer"
             id={`win-expand-${title.replace(/\s+/g, '-').toLowerCase()}`}
             title="Expand"
-          />
-          <button 
-            onClick={onClose}
-            className="w-3 h-3 rounded-full bg-emerald-400/55 hover:bg-emerald-500 transition-colors cursor-pointer"
-            id={`win-close-${title.replace(/\s+/g, '-').toLowerCase()}`}
-            title="Close"
           />
         </div>
       </div>

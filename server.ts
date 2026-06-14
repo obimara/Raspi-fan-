@@ -165,7 +165,7 @@ app.post("/api/fan/report", (req, res) => {
       state.daemonLogs.unshift(`[${now.toLocaleTimeString()}] PI: ${log}`);
     });
     if (state.daemonLogs.length > 150) {
-      state.daemonLogs.slice(0, 150);
+      state.daemonLogs = state.daemonLogs.slice(0, 150);
     }
   }
 

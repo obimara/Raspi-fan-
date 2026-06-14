@@ -1,16 +1,16 @@
 ================================================================================
-RASPBERRY PI REMOTE FAN CONTROLLER - FULL CODE EXPLORATION GUIDE
+RASPBERRY PI REMOTE FAN CONTROLLER - FULL CODE EXPLORATION GUIDE (UPDATED)
 ================================================================================
 This single file contains the entire implementation of the glassy, transparent,
 fully active Fan Controller system constructed for Debian Trixie on Raspberry Pi.
 
 Included modules below:
-1. /src/types.ts              - Core TypeScript state definitions and telemetry interfaces
-2. /server.ts                 - Custom Node/Express full-stack backend with remote daemon JSON reporting
-3. /src/App.tsx               - Compact transparent desktop status bar, expandable glassy window interface, installation panel
+1. /src/types.ts                      - Core TypeScript state definitions and telemetry interfaces
+2. /server.ts                         - Custom Node/Express full-stack backend with remote daemon JSON reporting
+3. /src/App.tsx                       - Compact transparent desktop status bar, expandable glassy window interface, installation panel
 4. /src/components/TelemetryChart.tsx - Responsive lightweight SVG thermal/load plotting utility
 5. /src/components/DaemonTerminal.tsx - Colored console monitor tracking real-time client report streams
-6. /src/components/DesktopWindow.tsx - Premium transparent OS-like window housing
+6. /src/components/DesktopWindow.tsx   - Premium transparent OS-like window housing
 
 --------------------------------------------------------------------------------
 1. FILE: /src/types.ts
@@ -1100,6 +1100,7 @@ export default function TelemetryChart({ history }: TelemetryChartProps) {
   }
 
   // Find min/max values for scaling
+  // Fixed reasonable bounds to avoid chart stretching and flickering
   const minTemp = 30; // 30°C standard bottom
   const maxTemp = 80; // 80°C top
 
@@ -1398,6 +1399,7 @@ export default function DaemonTerminal({ logs, onClearLogs }: DaemonTerminalProp
           </div>
         ) : (
           filteredLogs.map((log, idx) => {
+            // Differentiate server, RPi log or speed adjustments visually
             let colorClass = "text-white/60";
             if (log.includes("[ERROR]") || log.includes("failed")) {
               colorClass = "text-rose-300 font-medium";

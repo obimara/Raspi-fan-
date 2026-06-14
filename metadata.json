@@ -1,0 +1,6 @@
+{
+  "name": "Raspberry Pi Fan Controller",
+  "description": "A glassmorphism desktop floating fan controller and remote API for Raspberry Pi running Debian Trixie, featuring sliding speed mixers, temperature target curves, and an integrated copy-paste Python daemon.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,10 +1,11 @@
+import "dotenv/config";
 import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
 import { FanState, FanTelemetry } from "./src/types";
 
 const app = express();
-const PORT = 3000;
+const PORT = Number(process.env.PORT ?? 3000);
 
 app.use(express.json());
 
@@ -43,13 +44,9 @@ function generateMockHistory() {
 
 state.history = generateMockHistory();
 
-// Helper to regularly append simulated ticks in memory if Pi is not connected,
-// so the dashboard lives and breathes during review!
+// Demo telemetry stops permanently when the first device report arrives.
 setInterval(() => {
-  // Only inject simulated telemetry if NO real Pi daemon is currently reporting (last seen > 15s ago, or never)
-  const isRealPiOffline = !state.lastSeen || (Date.now() - new Date(state.lastSeen).getTime() > 15000);
-  
-  if (isRealPiOffline) {
+  if (state.lastSeen === null) {
     const now = new Date();
     const factor = Math.sin(now.getTime() / 60000);
     
@@ -100,81 +97,86 @@ app.get("/api/fan/state", (req, res) => {
   const isOnline = state.lastSeen ? (Date.now() - new Date(state.lastSeen).getTime() < 12000) : false;
   res.json({
     ...state,
-    isOnline
+    isOnline,
+    telemetrySource: state.lastSeen === null ? "demo" : isOnline ? "device" : "stale"
   });
 });
 
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function inRange(value: unknown, min: number, max: number): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value >= min && value <= max;
+}
+
 app.post("/api/fan/control", (req, res) => {
-  const { speed, mode, targetTemp } = req.body;
-  
-  let changed = [];
-  if (speed !== undefined && speed >= 0 && speed <= 100) {
-    state.speed = speed;
-    changed.push(`Speed set to ${speed}%`);
-  }
-  if (mode !== undefined && (mode === "manual" || mode === "auto")) {
-    state.mode = mode;
-    changed.push(`Mode changed to ${mode}`);
-  }
-  if (targetTemp !== undefined && targetTemp >= 30 && targetTemp <= 90) {
-    state.targetTemp = targetTemp;
-    changed.push(`Target Temp set to ${targetTemp}°C`);
+  const body: unknown = req.body;
+  if (!isObject(body) || Object.keys(body).length === 0 ||
+      Object.keys(body).some(key => !["speed", "mode", "targetTemp"].includes(key)) ||
+      ("speed" in body && !inRange(body.speed, 0, 100)) ||
+      ("mode" in body && body.mode !== "manual" && body.mode !== "auto") ||
+      ("targetTemp" in body && !inRange(body.targetTemp, 30, 90))) {
+    res.status(400).json({ error: "Provide speed (0–100), mode (auto/manual), or targetTemp (30–90) with valid values." });
+    return;
   }
 
-  if (changed.length > 0) {
-    const timestamp = new Date().toLocaleTimeString();
-    state.daemonLogs.unshift(`[${timestamp}] Control configuration updated: ${changed.join(", ")}`);
-    if (state.daemonLogs.length > 150) {
-      state.daemonLogs.pop();
-    }
+  // Validate the whole request before changing any control settings.
+  const changed: string[] = [];
+  if ("speed" in body) {
+    state.speed = body.speed as number;
+    changed.push(`Speed set to ${state.speed}%`);
   }
-
+  if ("mode" in body) {
+    state.mode = body.mode as FanState["mode"];
+    changed.push(`Mode changed to ${state.mode}`);
+  }
+  if ("targetTemp" in body) {
+    state.targetTemp = body.targetTemp as number;
+    changed.push(`Target Temp set to ${state.targetTemp}°C`);
+  }
+  const timestamp = new Date().toLocaleTimeString();
+  state.daemonLogs.unshift(`[${timestamp}] Control configuration updated: ${changed.join(", ")}`);
+  state.daemonLogs = state.daemonLogs.slice(0, 150);
   res.json({ success: true, state });
 });
 
-// Reporter endpoint for Raspberry Pi daemon
+app.delete("/api/fan/logs", (_req, res) => {
+  state.daemonLogs = [];
+  res.json({ success: true });
+});
+
+// Reporter endpoint for Raspberry Pi daemon.
 app.post("/api/fan/report", (req, res) => {
-  const { temp, speed, hostname, logs } = req.body;
+  const body: unknown = req.body;
+  if (!isObject(body) || !inRange(body.temp, -100, 200) || !inRange(body.speed, 0, 100) ||
+      ("hostname" in body && (typeof body.hostname !== "string" || body.hostname.trim().length === 0 || body.hostname.length > 255)) ||
+      ("logs" in body && (!Array.isArray(body.logs) || body.logs.length > 150 ||
+        body.logs.some(log => typeof log !== "string" || log.length > 2000)))) {
+    res.status(400).json({ error: "Report requires numeric temp (-100–200) and speed (0–100), with optional hostname and string logs." });
+    return;
+  }
+
   const now = new Date();
-  
+  if (state.lastSeen === null) state.history = [];
   state.lastSeen = now.toISOString();
-  
-  if (temp !== undefined) {
-    state.currentTemp = parseFloat(temp.toFixed(1));
-  }
-  if (speed !== undefined) {
-    state.currentSpeed = Math.round(speed);
-  }
-  if (hostname) {
-    state.hostname = hostname;
-  }
-  
-  // Append telemetry tracking
+  state.currentTemp = Number(body.temp.toFixed(1));
+  state.currentSpeed = Math.round(body.speed);
+  if (typeof body.hostname === "string") state.hostname = body.hostname;
   state.history.push({
-    timestamp: now.toISOString(),
+    timestamp: state.lastSeen,
     temp: state.currentTemp,
     speed: state.currentSpeed
   });
-  
-  if (state.history.length > 40) {
-    state.history.shift();
-  }
-
-  if (logs && Array.isArray(logs)) {
-    logs.forEach(log => {
+  state.history = state.history.slice(-40);
+  if (Array.isArray(body.logs)) {
+    for (const log of body.logs) {
       state.daemonLogs.unshift(`[${now.toLocaleTimeString()}] PI: ${log}`);
-    });
-    if (state.daemonLogs.length > 150) {
-      state.daemonLogs = state.daemonLogs.slice(0, 150);
     }
+    state.daemonLogs = state.daemonLogs.slice(0, 150);
   }
 
-  // Server sends instructions back on how the daemon should behave
-  res.json({
-    mode: state.mode,
-    speed: state.speed, // target custom manual speed set by web UI
-    targetTemp: state.targetTemp // target temperature limit for autocurve
-  });
+  res.json({ mode: state.mode, speed: state.speed, targetTemp: state.targetTemp });
 });
 
 // Dynamically generated Python Daemon script
@@ -192,7 +194,7 @@ import random
 import socket
 
 # Configuration
-SERVER_URL = "${hostUrl}"
+SERVER_URL = ${JSON.stringify(hostUrl)}
 REPORT_INTERVAL = 3.0  # seconds
 PIN_PWM_FAN = 18       # Default BCM GPIO 18 (Pin 12) on Raspberry Pi
 
@@ -342,8 +344,9 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Remote Fan Server listening on port ${PORT}`);
+  const server = app.listen(PORT, "0.0.0.0", () => {
+    const address = server.address();
+    console.log(`Remote Fan Server listening on port ${typeof address === "object" && address ? address.port : PORT}`);
   });
 }
 
